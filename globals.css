@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>StyleConnect – Offline Demo</title>
+  <style>
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:0;background:#fff;color:#111}
+    header{border-bottom:1px solid #e5e5e5;padding:14px 18px;font-weight:700}
+    main{max-width:900px;margin:0 auto;padding:18px}
+    .card{border:1px solid #e5e5e5;border-radius:16px;padding:14px;margin:12px 0}
+    .row{display:flex;gap:12px;flex-wrap:wrap}
+    input,button,select{font:inherit}
+    input{padding:10px 12px;border:1px solid #ddd;border-radius:12px;min-width:260px}
+    button{padding:10px 12px;border:1px solid #ddd;border-radius:12px;background:#fff;cursor:pointer}
+    button:disabled{opacity:.5;cursor:not-allowed}
+    ul{margin:8px 0 0 18px}
+    .tag{display:inline-block;border:1px solid #eee;border-radius:999px;padding:4px 10px;margin:4px 6px 0 0;font-size:12px;color:#444}
+    .muted{color:#666}
+  </style>
+</head>
+<body>
+  <header>StyleConnect – Offline Demo (Regeln + „KI“-Erklärung)</header>
+  <main>
+    <div class="card">
+      <h2 style="margin:0 0 8px 0;">1) Quiz (Mini)</h2>
+      <div class="row">
+        <label>Stil:
+          <select id="style">
+            <option value="casual">Casual</option>
+            <option value="minimal">Minimal</option>
+            <option value="streetwear">Streetwear</option>
+            <option value="elegant">Elegant</option>
+          </select>
+        </label>
+        <label>Farben:
+          <select id="colors">
+            <option value="neutral">Neutral</option>
+            <option value="colorful">Bunt</option>
+            <option value="pastel">Pastell</option>
+            <option value="earth-tones">Erdtöne</option>
+          </select>
+        </label>
+        <label>Anlass:
+          <select id="occasion">
+            <option value="daily">Alltag</option>
+            <option value="office">Office</option>
+            <option value="night-out">Night out</option>
+            <option value="event">Event</option>
+          </select>
+        </label>
+      </div>
+      <button id="gen" style="margin-top:10px;">Empfehlungen generieren</button>
+      <div id="quizOut" class="muted" style="margin-top:10px;"></div>
+      <div id="tagsOut" style="margin-top:6px;"></div>
+    </div>
+
+    <div class="card">
+      <h2 style="margin:0 0 8px 0;">2) For You (Hybrid)</h2>
+      <div class="muted">Regeln wählen Kombis aus, „KI“ erklärt kurz warum (offline Template).</div>
+      <div id="recos"></div>
+    </div>
+
+    <div class="card">
+      <h2 style="margin:0 0 8px 0;">Was ist das?</h2>
+      <div class="muted">
+        Diese Datei ist eine klickbare Demo, die du direkt im Browser öffnen kannst – ohne Supabase/OpenAI.
+        Die echte Web-App (im Projektordner) nutzt optional Supabase + OpenAI.
+      </div>
+    </div>
+  </main>
+
+<script>
+  const RULES = [
+    { ifTags:["minimal","neutral"], priority:10, reco:{title:"Capsule-Kombi", items:["weißes T‑Shirt","beige Chino","schwarze Sneaker"], tags:["minimal","neutral"]}},
+    { ifTags:["streetwear"], priority:20, reco:{title:"Streetwear Layering", items:["Oversized Hoodie","Baggy Jeans","Cap"], tags:["streetwear"]}},
+    { ifTags:["elegant","office"], priority:15, reco:{title:"Smart Office", items:["Blazer","Feinstrick","Loafer"], tags:["elegant","office"]}},
+    { ifTags:["pastel"], priority:30, reco:{title:"Pastell-Look", items:["helles Overshirt","weißes Top","light-wash Jeans"], tags:["pastel"]}}
+  ];
+
+  function normalize(tags){ return [...new Set(tags.map(t=>t.trim().toLowerCase()).filter(Boolean))]; }
+
+  function matchRules(userTags){
+    const u = new Set(normalize(userTags));
+    return RULES
+      .map(r=>{
+        const need = r.ifTags.map(t=>t.toLowerCase());
+        const hit = need.filter(t=>u.has(t)).length;
+        return {r, hit};
+      })
+      .filter(x=>x.hit>0)
+      .sort((a,b)=> b.hit!==a.hit ? (b.hit-a.hit) : (a.r.priority-b.r.priority))
+      .map(x=>x.r);
+  }
+
+  function aiExplain(title, tags){
+    const t = tags.length ? tags.join(", ") : "deinen Angaben";
+    return `Passt zu ${t}, weil "${title}" leicht kombinierbar ist und in diesen Stilrahmen fällt.`;
+  }
+
+  function buildTagsFromQuiz(){
+    const style = document.getElementById("style").value;
+    const colors = document.getElementById("colors").value;
+    const occasion = document.getElementById("occasion").value;
+    // simple mapping like the app
+    const tags = [style, colors, occasion];
+    if(colors==="neutral"){ tags.push("beige","black"); }
+    if(style==="minimal"){ tags.push("clean"); }
+    return normalize(tags);
+  }
+
+  function renderTags(tags){
+    const el = document.getElementById("tagsOut");
+    el.innerHTML = tags.map(t=>`<span class="tag">${t}</span>`).join("");
+  }
+
+  function renderRecos(tags){
+    const container = document.getElementById("recos");
+    const matched = matchRules(tags).slice(0,5);
+    const recos = matched.length ? matched.map(m=>m.reco) : [{title:"Basis-Kombi", items:["jeans","weißes tee","sneaker"], tags:["basic"]}];
+    container.innerHTML = recos.map(r=>`
+      <div class="card">
+        <div style="font-weight:700">${r.title}</div>
+        <div class="muted" style="margin-top:6px;">${aiExplain(r.title, tags)}</div>
+        <ul>${r.items.map(i=>`<li>${i}</li>`).join("")}</ul>
+        <div style="margin-top:8px" class="muted">Tags: ${r.tags.join(", ")}</div>
+      </div>
+    `).join("");
+  }
+
+  document.getElementById("gen").addEventListener("click", ()=>{
+    const tags = buildTagsFromQuiz();
+    document.getElementById("quizOut").textContent = "Deine Tags aus dem Quiz:";
+    renderTags(tags);
+    renderRecos(tags);
+  });
+
+  // initial render
+  document.getElementById("gen").click();
+</script>
+</body>
+</html>
